@@ -47,6 +47,7 @@ pipeline {
         stage('Build React Application') {
             environment {
                 NODE_OPTIONS = "--openssl-legacy-provider"
+		CI = "false"
             }
             steps {
                 sh '''
