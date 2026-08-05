@@ -1,6 +1,14 @@
 pipeline {
     agent any
 
+    tools {
+        dependencyCheck 'DependencyCheck'
+    }
+
+    environment {
+        NODE_OPTIONS = "--openssl-legacy-provider"
+    }
+
     stages {
 
         stage('Checkout Source') {
@@ -23,6 +31,24 @@ pipeline {
             }
         }
 
+        stage('Dependency Scan - OWASP') {
+            steps {
+                dependencyCheck additionalArguments: '''
+                    --scan .
+                    --format HTML
+                    --format XML
+                    --out reports
+                ''',
+                odcInstallation: 'DependencyCheck'
+            }
+        }
+
+        stage('Publish Dependency Report') {
+            steps {
+                dependencyCheckPublisher pattern: 'reports/dependency-check-report.xml'
+            }
+        }
+
         stage('Verify Environment') {
             steps {
                 sh '''
@@ -30,43 +56,33 @@ pipeline {
                     whoami
                     pwd
 
-                    echo "========== PATH =========="
-                    echo $PATH
-
                     echo "========== Git =========="
                     git --version
 
                     echo "========== Node =========="
-                    which node || true
-                    node -v || true
+                    node -v
 
                     echo "========== NPM =========="
-                    which npm || true
-                    npm -v || true
+                    npm -v
 
                     echo "========== Docker =========="
-                    docker --version || true
+                    docker --version
                 '''
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                sh '''
-                    npm install
-                '''
+                sh 'npm install'
             }
         }
 
         stage('Build React Application') {
             environment {
-                NODE_OPTIONS = "--openssl-legacy-provider"
                 CI = "false"
             }
             steps {
-                sh '''
-                    npm run build
-                '''
+                sh 'npm run build'
             }
         }
     }
@@ -79,11 +95,11 @@ pipeline {
         }
 
         success {
-            echo 'CI Pipeline completed successfully!'
+            echo '✅ CI Pipeline completed successfully!'
         }
 
         failure {
-            echo 'CI Pipeline failed.'
+            echo '❌ CI Pipeline failed.'
         }
     }
 }
