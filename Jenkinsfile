@@ -9,6 +9,20 @@ pipeline {
             }
         }
 
+        stage('Secret Scan - Gitleaks') {
+            steps {
+                sh '''
+                    mkdir -p reports
+
+                    gitleaks detect \
+                        --no-git \
+                        --source . \
+                        --report-format sarif \
+                        --report-path reports/gitleaks.sarif
+                '''
+            }
+        }
+
         stage('Verify Environment') {
             steps {
                 sh '''
@@ -47,7 +61,7 @@ pipeline {
         stage('Build React Application') {
             environment {
                 NODE_OPTIONS = "--openssl-legacy-provider"
-		CI = "false"
+                CI = "false"
             }
             steps {
                 sh '''
@@ -55,21 +69,21 @@ pipeline {
                 '''
             }
         }
-
     }
 
     post {
 
+        always {
+            archiveArtifacts artifacts: 'reports/*', fingerprint: true
+            echo 'Pipeline execution finished.'
+        }
+
         success {
-            echo '✅ CI Pipeline completed successfully!'
+            echo 'CI Pipeline completed successfully!'
         }
 
         failure {
-            echo '❌ CI Pipeline failed.'
-        }
-
-        always {
-            echo 'Pipeline execution finished.'
+            echo 'CI Pipeline failed.'
         }
     }
 }
