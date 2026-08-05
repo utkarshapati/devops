@@ -1,10 +1,6 @@
 pipeline {
     agent any
 
-    tools {
-        dependencyCheck 'DependencyCheck'
-    }
-
     environment {
         NODE_OPTIONS = "--openssl-legacy-provider"
     }
@@ -33,19 +29,18 @@ pipeline {
 
         stage('Dependency Scan - OWASP') {
             steps {
-                dependencyCheck additionalArguments: '''
-                    --scan .
-                    --format HTML
-                    --format XML
-                    --out reports
-                ''',
-                odcInstallation: 'DependencyCheck'
+                dependencyCheck(
+                    odcInstallation: 'DependencyCheck',
+                    additionalArguments: '--scan . --format HTML --format XML --out reports'
+                )
             }
         }
 
         stage('Publish Dependency Report') {
             steps {
-                dependencyCheckPublisher pattern: 'reports/dependency-check-report.xml'
+                dependencyCheckPublisher(
+                    pattern: 'reports/dependency-check-report.xml'
+                )
             }
         }
 
@@ -88,7 +83,6 @@ pipeline {
     }
 
     post {
-
         always {
             archiveArtifacts artifacts: 'reports/*', fingerprint: true
             echo 'Pipeline execution finished.'
