@@ -11,7 +11,7 @@ import { getAnalytics } from "firebase/analytics";
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyDO0WWJhETy25tIVwRrhFtt52msxFKMis8",
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: "prime-clone-e1de6.firebaseapp.com",
   databaseURL: "https://prime-clone-e1de6.firebaseio.com",
   projectId: "prime-clone-e1de6",

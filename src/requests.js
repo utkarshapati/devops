@@ -1,5 +1,4 @@
-const API_KEY = "989a8027930013244e3c2af17088dcac";
-
+const API_KEY = process.env.REACT_APP_TMDB_API_KEY;
 const requests = [
   {
     title: "Discover",
