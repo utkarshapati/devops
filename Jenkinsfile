@@ -35,8 +35,6 @@ pipeline {
         }
 
         stage('Dependency Scan - OWASP') {
-            retries(2)
-
             steps {
                 withCredentials([
                     string(
@@ -44,6 +42,7 @@ pipeline {
                         variable: 'NVD_API_KEY'
                     )
                 ]) {
+
                     sh 'mkdir -p reports'
 
                     dependencyCheck(
