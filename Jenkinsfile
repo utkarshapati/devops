@@ -1,6 +1,11 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+        timestamps()
+    }
+
     environment {
         NODE_OPTIONS = "--openssl-legacy-provider"
     }
@@ -16,6 +21,8 @@ pipeline {
         stage('Secret Scan - Gitleaks') {
             steps {
                 sh '''
+                    echo "========== Gitleaks Secret Scan =========="
+
                     mkdir -p reports
 
                     gitleaks detect \
@@ -29,10 +36,25 @@ pipeline {
 
         stage('Dependency Scan - OWASP') {
             steps {
-                dependencyCheck(
-                    odcInstallation: 'DependencyCheck',
-                    additionalArguments: '--scan . --format HTML --format XML --out reports'
-                )
+                withCredentials([
+                    string(
+                        credentialsId: 'nvd-api-key',
+                        variable: 'NVD_API_KEY'
+                    )
+                ]) {
+                    sh 'mkdir -p reports'
+
+                    dependencyCheck(
+                        odcInstallation: 'DependencyCheck',
+                        additionalArguments: """
+                            --scan .
+                            --format HTML
+                            --format XML
+                            --out reports
+                            --nvdApiKey ${NVD_API_KEY}
+                        """
+                    )
+                }
             }
         }
 
@@ -55,9 +77,11 @@ pipeline {
                     git --version
 
                     echo "========== Node =========="
+                    which node
                     node -v
 
                     echo "========== NPM =========="
+                    which npm
                     npm -v
 
                     echo "========== Docker =========="
@@ -68,7 +92,10 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                sh 'npm install'
+                sh '''
+                    echo "========== Installing Dependencies =========="
+                    npm install
+                '''
             }
         }
 
@@ -76,24 +103,33 @@ pipeline {
             environment {
                 CI = "false"
             }
+
             steps {
-                sh 'npm run build'
+                sh '''
+                    echo "========== Building React Application =========="
+                    npm run build
+                '''
             }
         }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'reports/*', fingerprint: true
-            echo 'Pipeline execution finished.'
+            echo "Pipeline execution finished."
+
+            archiveArtifacts(
+                artifacts: 'reports/*',
+                allowEmptyArchive: true,
+                fingerprint: true
+            )
         }
 
         success {
-            echo '✅ CI Pipeline completed successfully!'
+            echo "✅ CI Pipeline completed successfully!"
         }
 
         failure {
-            echo '❌ CI Pipeline failed.'
+            echo "❌ CI Pipeline failed."
         }
     }
 }
