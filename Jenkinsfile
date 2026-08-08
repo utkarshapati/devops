@@ -35,6 +35,8 @@ pipeline {
         }
 
         stage('Dependency Scan - OWASP') {
+            retries(2)
+
             steps {
                 withCredentials([
                     string(
@@ -46,13 +48,7 @@ pipeline {
 
                     dependencyCheck(
                         odcInstallation: 'DependencyCheck',
-                        additionalArguments: """
-                            --scan .
-                            --format HTML
-                            --format XML
-                            --out reports
-                            --nvdApiKey ${NVD_API_KEY}
-                        """
+                        additionalArguments: '--scan . --format HTML --format XML --out reports --nvdApiKey $NVD_API_KEY'
                     )
                 }
             }
@@ -70,6 +66,7 @@ pipeline {
             steps {
                 sh '''
                     echo "========== Environment =========="
+
                     whoami
                     pwd
 
@@ -114,6 +111,7 @@ pipeline {
     }
 
     post {
+
         always {
             echo "Pipeline execution finished."
 
