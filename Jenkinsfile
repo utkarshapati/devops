@@ -1,4 +1,5 @@
 pipeline {
+
     agent any
 
     options {
@@ -6,8 +7,8 @@ pipeline {
         timestamps()
     }
 
-    environment {
-        NODE_OPTIONS = "--openssl-legacy-provider"
+    tools {
+        nodejs 'NodeJS'
     }
 
     stages {
@@ -26,37 +27,48 @@ pipeline {
                     mkdir -p reports
 
                     gitleaks detect \
-                        --no-git \
                         --source . \
+                        --no-git \
                         --report-format sarif \
-                        --report-path reports/gitleaks.sarif
+                        --report-path reports/gitleaks.sarif \
+                        --exit-code 0
+
+                    echo "Gitleaks scan completed."
                 '''
             }
         }
 
         stage('Dependency Scan - OWASP') {
             steps {
-                withCredentials([
-                    string(
-                        credentialsId: 'nvd-api-key',
-                        variable: 'NVD_API_KEY'
-                    )
-                ]) {
+                sh 'mkdir -p reports'
 
-                    sh 'mkdir -p reports'
-
-                    dependencyCheck(
-                        odcInstallation: 'DependencyCheck',
-                        additionalArguments: '--scan . --format HTML --format XML --out reports --nvdApiKey $NVD_API_KEY'
-                    )
-                }
+                dependencyCheck(
+                    odcInstallation: 'DependencyCheck',
+                    nvdCredentialsId: 'nvd-api-key',
+                    additionalArguments: '--noupdate --format XML --format HTML --out reports',
+                    stopBuild: true
+                )
             }
         }
 
         stage('Publish Dependency Report') {
             steps {
+
                 dependencyCheckPublisher(
-                    pattern: 'reports/dependency-check-report.xml'
+                    pattern: 'reports/dependency-check-report.xml',
+                    skipNoReportFiles: false,
+                    stopBuild: false
+                )
+
+                publishHTML(
+                    target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports',
+                        reportFiles: 'dependency-check-report.html',
+                        reportName: 'OWASP Dependency-Check Report'
+                    ]
                 )
             }
         }
@@ -66,7 +78,10 @@ pipeline {
                 sh '''
                     echo "========== Environment =========="
 
+                    echo "User:"
                     whoami
+
+                    echo "Workspace:"
                     pwd
 
                     echo "========== Git =========="
@@ -96,14 +111,11 @@ pipeline {
         }
 
         stage('Build React Application') {
-            environment {
-                CI = "false"
-            }
-
             steps {
                 sh '''
                     echo "========== Building React Application =========="
-                    npm run build
+
+                    CI=true npm run build
                 '''
             }
         }
@@ -112,21 +124,23 @@ pipeline {
     post {
 
         always {
-            echo "Pipeline execution finished."
-
-            archiveArtifacts(
-                artifacts: 'reports/*',
-                allowEmptyArchive: true,
-                fingerprint: true
-            )
+            echo 'Pipeline execution finished.'
         }
 
         success {
-            echo "✅ CI Pipeline completed successfully!"
+            echo '✅ CI Pipeline completed successfully.'
         }
 
         failure {
-            echo "❌ CI Pipeline failed."
+            echo '❌ CI Pipeline failed.'
+        }
+
+        cleanup {
+            echo 'Cleaning workspace...'
+            cleanWs(
+                deleteDirs: true,
+                disableDeferredWipeout: true
+            )
         }
     }
 }
