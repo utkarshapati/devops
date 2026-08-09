@@ -7,10 +7,6 @@ pipeline {
         dependencyCheck 'DependencyCheck'
     }
 
-    environment {
-        NVD_API_KEY = credentials('nvd-api-key')
-    }
-
     stages {
 
         stage('Checkout Source') {
@@ -40,18 +36,10 @@ pipeline {
             steps {
                 sh 'mkdir -p reports'
 
-                withCredentials([
-                    string(
-                        credentialsId: 'nvd-api-key',
-                        variable: 'NVD_API_KEY'
-                    )
-                ]) {
-
-                    dependencyCheck(
-                        odcInstallation: 'DependencyCheck',
-                        additionalArguments: "--scan . --format HTML --format XML --out reports --nvdApiKey ${NVD_API_KEY}"
-                    )
-                }
+                dependencyCheck(
+                    odcInstallation: 'DependencyCheck',
+                    additionalArguments: '--scan package-lock.json --noupdate --format HTML --format XML --out reports'
+                )
             }
         }
 
@@ -103,7 +91,11 @@ pipeline {
         stage('Build React Application') {
             steps {
                 withEnv(['CI=false']) {
-                    sh 'npm run build'
+                    sh '''
+                        echo "========== React Build =========="
+                        echo "CI=$CI"
+                        npm run build
+                    '''
                 }
             }
         }
@@ -111,7 +103,6 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-
                     sh '''
                         echo "========== SonarQube Analysis =========="
 
@@ -123,6 +114,31 @@ pipeline {
                           -Dsonar.sourceEncoding=UTF-8
                     '''
                 }
+            }
+        }
+
+        stage('Docker Build') {
+            steps {
+                sh '''
+                    echo "========== Docker Build =========="
+
+                    docker build \
+                        -t prime-clone:latest .
+                '''
+            }
+        }
+
+        stage('Docker Image Check') {
+            steps {
+                sh '''
+                    echo "========== Docker Image =========="
+
+                    docker images prime-clone
+
+                    docker inspect prime-clone:latest > /dev/null
+
+                    echo "Docker image created successfully."
+                '''
             }
         }
     }
