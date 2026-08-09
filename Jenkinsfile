@@ -4,7 +4,6 @@ pipeline {
 
     tools {
         nodejs 'NodeJS'
-        dependencyCheck 'DependencyCheck'
     }
 
     stages {
@@ -122,8 +121,7 @@ pipeline {
                 sh '''
                     echo "========== Docker Build =========="
 
-                    docker build \
-                        -t prime-clone:latest .
+                    docker build -t prime-clone:latest .
                 '''
             }
         }
