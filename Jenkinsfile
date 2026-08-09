@@ -102,6 +102,8 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
+			script {
+				def scannerHome = tool 'SonarQubeScanner'
                     sh '''
                         echo "========== SonarQube Analysis =========="
 
@@ -112,6 +114,7 @@ pipeline {
                           -Dsonar.exclusions=node_modules/**,build/** \
                           -Dsonar.sourceEncoding=UTF-8
                     '''
+			}
                 }
             }
         }
