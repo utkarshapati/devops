@@ -93,6 +93,7 @@ pipeline {
                     sh '''
                         echo "========== React Build =========="
                         echo "CI=$CI"
+
                         npm run build
                     '''
                 }
@@ -102,19 +103,22 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonarqube') {
-			script {
-				def scannerHome = tool 'SonarQubeScanner'
-                    sh '''
-                        echo "========== SonarQube Analysis =========="
+                    script {
+                        def scannerHome = tool name: 'SonarQubeScanner',
+                            type: 'hudson.plugins.sonar.SonarRunnerInstallation'
 
-                        sonar-scanner \
-                          -Dsonar.projectKey=prime-clone \
-                          -Dsonar.projectName=prime-clone \
-                          -Dsonar.sources=src \
-                          -Dsonar.exclusions=node_modules/**,build/** \
-                          -Dsonar.sourceEncoding=UTF-8
-                    '''
-			}
+                        sh """
+                            echo "========== SonarQube Analysis =========="
+                            echo "Using scanner: ${scannerHome}"
+
+                            ${scannerHome}/bin/sonar-scanner \
+                              -Dsonar.projectKey=prime-clone \
+                              -Dsonar.projectName=prime-clone \
+                              -Dsonar.sources=src \
+                              -Dsonar.exclusions=node_modules/**,build/** \
+                              -Dsonar.sourceEncoding=UTF-8
+                        """
+                    }
                 }
             }
         }
@@ -156,5 +160,3 @@ pipeline {
         failure {
             echo '❌ CI/CD Pipeline failed.'
         }
-    }
-}
