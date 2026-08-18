@@ -104,8 +104,10 @@ pipeline {
             steps {
                 withSonarQubeEnv('sonarqube') {
                     script {
-                        def scannerHome = tool name: 'SonarQubeScanner',
+                        def scannerHome = tool(
+                            name: 'SonarQubeScanner',
                             type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                        )
 
                         sh """
                             echo "========== SonarQube Analysis =========="
@@ -160,3 +162,5 @@ pipeline {
         failure {
             echo '❌ CI/CD Pipeline failed.'
         }
+    }
+}
