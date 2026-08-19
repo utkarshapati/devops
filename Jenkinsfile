@@ -6,6 +6,15 @@ pipeline {
         nodejs 'NodeJS'
     }
 
+    environment {
+        CI = 'false'
+
+        IMAGE_NAME = 'prime-clone'
+        IMAGE_TAG = 'v1'
+
+        SONAR_SCANNER = tool 'SonarQubeScanner'
+    }
+
     stages {
 
         stage('Checkout Source') {
@@ -14,53 +23,10 @@ pipeline {
             }
         }
 
-        stage('Secret Scan - Gitleaks') {
-            steps {
-                sh '''
-                    echo "========== Gitleaks Secret Scan =========="
-
-                    mkdir -p reports
-
-                    gitleaks detect \
-                        --source . \
-                        --no-git \
-                        --report-format sarif \
-                        --report-path reports/gitleaks.sarif \
-                        --exit-code 1
-                '''
-            }
-        }
-
-        stage('Dependency Scan - OWASP') {
-            steps {
-                sh 'mkdir -p reports'
-
-                dependencyCheck(
-                    odcInstallation: 'DependencyCheck',
-                    additionalArguments: '--scan package-lock.json --noupdate --format HTML --format XML --out reports'
-                )
-            }
-        }
-
-        stage('Publish Dependency Report') {
-            steps {
-                publishHTML([
-                    allowMissing: true,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: 'reports',
-                    reportFiles: 'dependency-check-report.html',
-                    reportName: 'OWASP Dependency-Check Report',
-                    reportTitles: 'Dependency Vulnerability Report'
-                ])
-            }
-        }
-
         stage('Verify Environment') {
             steps {
                 sh '''
                     echo "========== Environment =========="
-
                     whoami
                     pwd
 
@@ -68,15 +34,19 @@ pipeline {
                     git --version
 
                     echo "========== Node =========="
-                    which node
                     node -v
 
                     echo "========== NPM =========="
-                    which npm
                     npm -v
 
                     echo "========== Docker =========="
                     docker --version
+
+                    echo "========== Gitleaks =========="
+                    gitleaks version
+
+                    echo "========== Trivy =========="
+                    trivy --version
                 '''
             }
         }
@@ -87,41 +57,78 @@ pipeline {
             }
         }
 
-        stage('Build React Application') {
+        stage('Secret Scan - Gitleaks') {
             steps {
-                withEnv(['CI=false']) {
-                    sh '''
-                        echo "========== React Build =========="
-                        echo "CI=$CI"
+                sh '''
+                    mkdir -p reports
 
-                        npm run build
-                    '''
+                    gitleaks detect \
+                    --source . \
+                    --no-git \
+                    --report-format sarif \
+                    --report-path reports/gitleaks.sarif \
+                    --exit-code 1
+                '''
+            }
+
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/gitleaks.sarif',
+                    allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Dependency Scan - OWASP') {
+            steps {
+                sh '''
+                    mkdir -p reports
+
+                    dependency-check \
+                    --project "prime-clone" \
+                    --scan . \
+                    --format HTML \
+                    --out reports \
+                    --noupdate \
+                    --disableAssembly \
+                    --disableNodeAudit \
+                    --disableRetireJS
+                '''
+            }
+
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/dependency-check-report.html',
+                    allowEmptyArchive: true
                 }
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonarqube') {
-                    script {
-                        def scannerHome = tool(
-                            name: 'SonarQubeScanner',
-                            type: 'hudson.plugins.sonar.SonarRunnerInstallation'
-                        )
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        echo "========== SonarQube Analysis =========="
 
-                        sh """
-                            echo "========== SonarQube Analysis =========="
-                            echo "Using scanner: ${scannerHome}"
+                        echo "Using scanner: ${SONAR_SCANNER}"
 
-                            ${scannerHome}/bin/sonar-scanner \
-                              -Dsonar.projectKey=prime-clone \
-                              -Dsonar.projectName=prime-clone \
-                              -Dsonar.sources=src \
-                              -Dsonar.exclusions=node_modules/**,build/** \
-                              -Dsonar.sourceEncoding=UTF-8
-                        """
-                    }
+                        ${SONAR_SCANNER}/bin/sonar-scanner \
+                        -Dsonar.projectKey=prime-clone \
+                        -Dsonar.projectName=prime-clone \
+                        -Dsonar.sources=src \
+                        -Dsonar.exclusions=node_modules/**,build/** \
+                        -Dsonar.sourceEncoding=UTF-8
+                    '''
                 }
+            }
+        }
+
+        stage('Build React Application') {
+            steps {
+                sh '''
+                    echo "========== React Build =========="
+                    CI=false npm run build
+                '''
             }
         }
 
@@ -130,37 +137,78 @@ pipeline {
                 sh '''
                     echo "========== Docker Build =========="
 
-                    docker build -t prime-clone:latest .
+                    docker build \
+                    -t ${IMAGE_NAME}:${IMAGE_TAG} .
                 '''
             }
         }
 
-        stage('Docker Image Check') {
+        stage('Trivy Container Scan') {
             steps {
                 sh '''
-                    echo "========== Docker Image =========="
+                    echo "========== Trivy Container Security Scan =========="
 
-                    docker images prime-clone
+                    mkdir -p reports
 
-                    docker inspect prime-clone:latest > /dev/null
+                    trivy image \
+                    --scanners vuln \
+                    --severity HIGH,CRITICAL \
+                    --format table \
+                    ${IMAGE_NAME}:${IMAGE_TAG}
 
-                    echo "Docker image created successfully."
+                    trivy image \
+                    --scanners vuln \
+                    --severity HIGH,CRITICAL \
+                    --format sarif \
+                    --output reports/trivy.sarif \
+                    ${IMAGE_NAME}:${IMAGE_TAG}
+                '''
+            }
+
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/trivy.sarif',
+                    allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Run Docker Container') {
+            steps {
+                sh '''
+                    echo "========== Deploy Container =========="
+
+                    docker rm -f prime-clone-app 2>/dev/null || true
+
+                    docker run -d \
+                    --name prime-clone-app \
+                    -p 8081:80 \
+                    ${IMAGE_NAME}:${IMAGE_TAG}
+
+                    echo "========== Running Container =========="
+
+                    docker ps --filter "name=prime-clone-app"
                 '''
             }
         }
     }
 
     post {
-        always {
-            echo 'Pipeline execution finished.'
-        }
-
         success {
-            echo '✅ CI/CD Pipeline completed successfully.'
+            echo '======================================'
+            echo 'DevSecOps Pipeline Completed!'
+            echo '======================================'
+            echo 'Application: http://localhost:8081'
         }
 
         failure {
-            echo '❌ CI/CD Pipeline failed.'
+            echo '======================================'
+            echo 'DevSecOps Pipeline Failed!'
+            echo '======================================'
+        }
+
+        always {
+            echo 'Pipeline execution finished.'
         }
     }
 }
