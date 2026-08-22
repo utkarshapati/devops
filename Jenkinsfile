@@ -185,7 +185,7 @@ pipeline {
                     --format sarif \
                     --output reports/trivy.sarif \
                     ${IMAGE_NAME}:${IMAGE_TAG}
-                }
+                '''
             }
 
             post {
@@ -203,7 +203,7 @@ pipeline {
                 sh '''
                     echo "========== Deploy Application =========="
 
-                    docker rm -f prime-clone-app 2>/dev/null || true
+                    docker rm -f prime-clone-app || true
 
                     docker run -d \
                     --name prime-clone-app \
@@ -214,8 +214,7 @@ pipeline {
 
                     docker ps --filter "name=prime-clone-app"
 
-                    echo "Application:"
-                    echo "http://localhost:8081"
+                    echo "Application: http://localhost:8081"
                 '''
             }
         }
