@@ -107,10 +107,7 @@ pipeline {
                         --scan . \
                         --format HTML \
                         --out reports \
-                        --noupdate \
-                        --disableAssembly \
-                        --disableNodeAudit \
-                        --disableRetireJS
+                        --noupdate
                     """
                 }
             }
