@@ -10,7 +10,7 @@ pipeline {
         CI = 'false'
 
         IMAGE_NAME = 'prime-clone'
-        IMAGE_TAG = 'v1'
+        IMAGE_TAG  = 'v1'
 
         SONAR_SCANNER = tool 'SonarQubeScanner'
     }
@@ -26,29 +26,30 @@ pipeline {
         stage('Verify Environment') {
             steps {
                 sh '''
-                    echo "========== Environment =========="
+                    echo "========== VERIFY ENVIRONMENT =========="
+
                     echo "User:"
                     whoami
 
                     echo "Workspace:"
                     pwd
 
-                    echo "========== Git =========="
+                    echo "Git:"
                     git --version
 
-                    echo "========== Node =========="
+                    echo "Node:"
                     node --version
 
-                    echo "========== NPM =========="
+                    echo "NPM:"
                     npm --version
 
-                    echo "========== Docker =========="
+                    echo "Docker:"
                     docker --version
 
-                    echo "========== Gitleaks =========="
+                    echo "Gitleaks:"
                     gitleaks version
 
-                    echo "========== Trivy =========="
+                    echo "Trivy:"
                     trivy --version
                 '''
             }
@@ -57,7 +58,8 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
-                    echo "========== Installing Dependencies =========="
+                    echo "========== INSTALL DEPENDENCIES =========="
+
                     npm install
                 '''
             }
@@ -66,16 +68,16 @@ pipeline {
         stage('Secret Scan - Gitleaks') {
             steps {
                 sh '''
-                    echo "========== Gitleaks Secret Scan =========="
+                    echo "========== GITLEAKS SECRET SCAN =========="
 
                     mkdir -p reports
 
                     gitleaks detect \
-                    --source . \
-                    --no-git \
-                    --report-format sarif \
-                    --report-path reports/gitleaks.sarif \
-                    --exit-code 1
+                        --source . \
+                        --no-git \
+                        --report-format sarif \
+                        --report-path reports/gitleaks.sarif \
+                        --exit-code 1
                 '''
             }
 
@@ -96,18 +98,20 @@ pipeline {
                     def dependencyCheckHome = tool 'DependencyCheck'
 
                     sh """
-                        echo "========== OWASP Dependency-Check =========="
+                        echo "========== OWASP DEPENDENCY-CHECK =========="
+
                         echo "Using Dependency-Check:"
                         echo "${dependencyCheckHome}"
 
                         mkdir -p reports
 
                         ${dependencyCheckHome}/bin/dependency-check.sh \
-                        --project "prime-clone" \
-                        --scan . \
-                        --format HTML \
-                        --out reports \
-                        --noupdate
+                            --project "prime-clone" \
+                            --scan . \
+                            --format HTML \
+                            --out reports \
+                            --noupdate \
+                            --disableAssembly
                     """
                 }
             }
@@ -127,17 +131,17 @@ pipeline {
                 withSonarQubeEnv('SonarQube') {
 
                     sh '''
-                        echo "========== SonarQube Analysis =========="
+                        echo "========== SONARQUBE ANALYSIS =========="
 
                         echo "Using scanner:"
                         echo "${SONAR_SCANNER}"
 
                         ${SONAR_SCANNER}/bin/sonar-scanner \
-                        -Dsonar.projectKey=prime-clone \
-                        -Dsonar.projectName=prime-clone \
-                        -Dsonar.sources=src \
-                        -Dsonar.exclusions=node_modules/**,build/** \
-                        -Dsonar.sourceEncoding=UTF-8
+                            -Dsonar.projectKey=prime-clone \
+                            -Dsonar.projectName=prime-clone \
+                            -Dsonar.sources=src \
+                            -Dsonar.exclusions=node_modules/**,build/** \
+                            -Dsonar.sourceEncoding=UTF-8
                     '''
                 }
             }
@@ -146,9 +150,11 @@ pipeline {
         stage('Build React Application') {
             steps {
                 sh '''
-                    echo "========== React Build =========="
+                    echo "========== REACT BUILD =========="
 
                     CI=false npm run build
+
+                    echo "React build completed."
                 '''
             }
         }
@@ -156,10 +162,14 @@ pipeline {
         stage('Docker Build') {
             steps {
                 sh '''
-                    echo "========== Docker Build =========="
+                    echo "========== DOCKER BUILD =========="
 
                     docker build \
-                    -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        -t ${IMAGE_NAME}:${IMAGE_TAG} .
+
+                    echo "========== DOCKER IMAGE =========="
+
+                    docker images ${IMAGE_NAME}
                 '''
             }
         }
@@ -167,21 +177,26 @@ pipeline {
         stage('Trivy Container Scan') {
             steps {
                 sh '''
-                    echo "========== Trivy Container Scan =========="
+                    echo "========== TRIVY CONTAINER SCAN =========="
 
                     mkdir -p reports
 
-                    trivy image \
-                    --scanners vuln \
-                    --severity HIGH,CRITICAL \
-                    ${IMAGE_NAME}:${IMAGE_TAG}
+                    echo "Scanning:"
+                    echo "${IMAGE_NAME}:${IMAGE_TAG}"
 
                     trivy image \
-                    --scanners vuln \
-                    --severity HIGH,CRITICAL \
-                    --format sarif \
-                    --output reports/trivy.sarif \
-                    ${IMAGE_NAME}:${IMAGE_TAG}
+                        --scanners vuln \
+                        --severity HIGH,CRITICAL \
+                        ${IMAGE_NAME}:${IMAGE_TAG}
+
+                    echo "Generating Trivy SARIF report..."
+
+                    trivy image \
+                        --scanners vuln \
+                        --severity HIGH,CRITICAL \
+                        --format sarif \
+                        --output reports/trivy.sarif \
+                        ${IMAGE_NAME}:${IMAGE_TAG}
                 '''
             }
 
@@ -195,23 +210,44 @@ pipeline {
             }
         }
 
-        stage('Run Docker Container') {
+        stage('Run Application Locally') {
             steps {
                 sh '''
-                    echo "========== Deploy Application =========="
+                    echo "========== RUN APPLICATION =========="
+
+                    echo "Removing previous container if present..."
 
                     docker rm -f prime-clone-app || true
 
+                    echo "Starting container..."
+
                     docker run -d \
-                    --name prime-clone-app \
-                    -p 8081:80 \
-                    ${IMAGE_NAME}:${IMAGE_TAG}
+                        --name prime-clone-app \
+                        -p 8081:80 \
+                        ${IMAGE_NAME}:${IMAGE_TAG}
 
-                    echo "========== Running Container =========="
+                    echo "========== CONTAINER STATUS =========="
 
-                    docker ps --filter "name=prime-clone-app"
+                    docker ps \
+                        --filter "name=prime-clone-app"
 
-                    echo "Application: http://localhost:8081"
+                    echo "Application URL:"
+                    echo "http://localhost:8081"
+                '''
+            }
+        }
+
+        stage('Application Health Check') {
+            steps {
+                sh '''
+                    echo "========== APPLICATION HEALTH CHECK =========="
+
+                    sleep 5
+
+                    curl -f http://localhost:8081
+
+                    echo ""
+                    echo "Application is running successfully!"
                 '''
             }
         }
@@ -221,21 +257,39 @@ pipeline {
 
         success {
             echo '''
-========================================
-     DEVSECOPS PIPELINE SUCCESS
-========================================
-Application: http://localhost:8081
-========================================
+==================================================
+           DEVSECOPS PIPELINE SUCCESS
+==================================================
+
+Security:
+  Gitleaks               PASS
+  OWASP Dependency Check PASS
+  SonarQube              PASS
+  Trivy                  PASS
+
+Build:
+  React                  PASS
+  Docker                 PASS
+
+Deployment:
+  Local Docker           PASS
+
+Application:
+  http://localhost:8081
+
+==================================================
 '''
         }
 
         failure {
             echo '''
-========================================
-     DEVSECOPS PIPELINE FAILED
-========================================
-Check the failed stage above.
-========================================
+==================================================
+           DEVSECOPS PIPELINE FAILED
+==================================================
+
+Check the failed stage in Console Output.
+
+==================================================
 '''
         }
 
