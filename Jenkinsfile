@@ -17,21 +17,27 @@ pipeline {
 
     stages {
 
+        // =====================================================
+        // 1. CHECKOUT
+        // =====================================================
+
         stage('Checkout Source') {
             steps {
                 checkout scm
             }
         }
 
+
+        // =====================================================
+        // 2. VERIFY ENVIRONMENT
+        // =====================================================
+
         stage('Verify Environment') {
             steps {
                 sh '''
                     echo "========== VERIFY ENVIRONMENT =========="
 
-                    echo "User:"
                     whoami
-
-                    echo "Workspace:"
                     pwd
 
                     echo "Git:"
@@ -55,6 +61,11 @@ pipeline {
             }
         }
 
+
+        // =====================================================
+        // 3. INSTALL DEPENDENCIES
+        // =====================================================
+
         stage('Install Dependencies') {
             steps {
                 sh '''
@@ -64,6 +75,11 @@ pipeline {
                 '''
             }
         }
+
+
+        // =====================================================
+        // 4. GITLEAKS
+        // =====================================================
 
         stage('Secret Scan - Gitleaks') {
             steps {
@@ -91,6 +107,11 @@ pipeline {
             }
         }
 
+
+        // =====================================================
+        // 5. OWASP DEPENDENCY-CHECK
+        // =====================================================
+
         stage('Dependency Scan - OWASP') {
             steps {
                 script {
@@ -107,7 +128,7 @@ pipeline {
 
                         ${dependencyCheckHome}/bin/dependency-check.sh \
                             --project "prime-clone" \
-                            --scan . \
+                            --scan package-lock.json \
                             --format HTML \
                             --out reports \
                             --noupdate \
@@ -126,8 +147,14 @@ pipeline {
             }
         }
 
+
+        // =====================================================
+        // 6. SONARQUBE
+        // =====================================================
+
         stage('SonarQube Analysis') {
             steps {
+
                 withSonarQubeEnv('SonarQube') {
 
                     sh '''
@@ -147,17 +174,27 @@ pipeline {
             }
         }
 
+
+        // =====================================================
+        // 7. REACT BUILD
+        // =====================================================
+
         stage('Build React Application') {
             steps {
                 sh '''
-                    echo "========== REACT BUILD =========="
+                    echo "========== REACT APPLICATION BUILD =========="
 
                     CI=false npm run build
 
-                    echo "React build completed."
+                    echo "React build completed successfully."
                 '''
             }
         }
+
+
+        // =====================================================
+        // 8. DOCKER BUILD
+        // =====================================================
 
         stage('Docker Build') {
             steps {
@@ -174,6 +211,11 @@ pipeline {
             }
         }
 
+
+        // =====================================================
+        // 9. TRIVY
+        // =====================================================
+
         stage('Trivy Container Scan') {
             steps {
                 sh '''
@@ -181,7 +223,7 @@ pipeline {
 
                     mkdir -p reports
 
-                    echo "Scanning:"
+                    echo "Scanning image:"
                     echo "${IMAGE_NAME}:${IMAGE_TAG}"
 
                     trivy image \
@@ -189,7 +231,7 @@ pipeline {
                         --severity HIGH,CRITICAL \
                         ${IMAGE_NAME}:${IMAGE_TAG}
 
-                    echo "Generating Trivy SARIF report..."
+                    echo "Generating SARIF report..."
 
                     trivy image \
                         --scanners vuln \
@@ -210,16 +252,21 @@ pipeline {
             }
         }
 
+
+        // =====================================================
+        // 10. RUN LOCALLY
+        // =====================================================
+
         stage('Run Application Locally') {
             steps {
                 sh '''
-                    echo "========== RUN APPLICATION =========="
+                    echo "========== DEPLOY LOCALLY =========="
 
-                    echo "Removing previous container if present..."
+                    echo "Removing old container..."
 
                     docker rm -f prime-clone-app || true
 
-                    echo "Starting container..."
+                    echo "Starting application..."
 
                     docker run -d \
                         --name prime-clone-app \
@@ -231,11 +278,17 @@ pipeline {
                     docker ps \
                         --filter "name=prime-clone-app"
 
-                    echo "Application URL:"
+                    echo ""
+                    echo "Application:"
                     echo "http://localhost:8081"
                 '''
             }
         }
+
+
+        // =====================================================
+        // 11. HEALTH CHECK
+        // =====================================================
 
         stage('Application Health Check') {
             steps {
@@ -247,32 +300,39 @@ pipeline {
                     curl -f http://localhost:8081
 
                     echo ""
-                    echo "Application is running successfully!"
+                    echo "========================================"
+                    echo "APPLICATION IS RUNNING SUCCESSFULLY"
+                    echo "========================================"
                 '''
             }
         }
     }
+
+
+    // =========================================================
+    // POST
+    // =========================================================
 
     post {
 
         success {
             echo '''
 ==================================================
-           DEVSECOPS PIPELINE SUCCESS
+        DEVSECOPS PIPELINE SUCCESS
 ==================================================
 
 Security:
-  Gitleaks               PASS
-  OWASP Dependency Check PASS
-  SonarQube              PASS
-  Trivy                  PASS
+  Gitleaks                PASS
+  OWASP Dependency-Check  PASS
+  SonarQube               PASS
+  Trivy                   PASS
 
 Build:
-  React                  PASS
-  Docker                 PASS
+  React                   PASS
+  Docker                  PASS
 
 Deployment:
-  Local Docker           PASS
+  Local Docker            PASS
 
 Application:
   http://localhost:8081
@@ -284,10 +344,10 @@ Application:
         failure {
             echo '''
 ==================================================
-           DEVSECOPS PIPELINE FAILED
+        DEVSECOPS PIPELINE FAILED
 ==================================================
 
-Check the failed stage in Console Output.
+Check the failed stage in Jenkins Console Output.
 
 ==================================================
 '''
